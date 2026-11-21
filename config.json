@@ -1,0 +1,14 @@
+{
+  "appearance": {
+    "fontFamily": "Inter",
+    "materialIconFont": "Material Design Icons"
+  },
+  "paths": {
+    "pywalColors": "~/.cache/wal/colors.json",
+    "pywalBarColors": "~/.cache/wal/colors-bar.json",
+    "pywalDockColors": "~/.cache/wal/colors-dock.json"
+  },
+  "keybindhelp": {
+    "hyprConfigDir": "~/.config/hypr"
+  }
+}

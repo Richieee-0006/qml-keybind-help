@@ -1,0 +1,3 @@
+module qs.components
+AuroraSurface 1.0 AuroraSurface.qml
+Elevation 1.0 Elevation.qml
