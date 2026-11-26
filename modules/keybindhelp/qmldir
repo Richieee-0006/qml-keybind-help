@@ -1,2 +1,3 @@
 module modules.keybindhelp
 KeybindHelpWindow 1.0 KeybindHelpWindow.qml
+KeyboardMapView 1.0 KeyboardMapView.qml
