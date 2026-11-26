@@ -58,12 +58,17 @@ PanelWindow {
 
     readonly property var config: QsConfig.Config
     readonly property var pywal: QsServices.Pywal
-    readonly property color cSurface: pywal.surfaceContainerHigh
+    readonly property color cSurface: pywal.surface
+    readonly property color cDeck: pywal.surfaceContainerLowest
     readonly property color cContainer: pywal.surfaceContainer
     readonly property color cContainerLow: pywal.surfaceContainerLow
+    readonly property color cContainerHigh: pywal.surfaceContainerHigh
     readonly property color cPrimary: pywal.primary
-    readonly property color cText: pywal.foreground
-    readonly property color cSubText: pywal.onSurfaceMuted
+    readonly property color cOnPrimary: pywal.m3onPrimary
+    readonly property color cPrimaryContainer: pywal.primaryContainer
+    readonly property color cOnPrimaryContainer: pywal.m3onPrimaryContainer
+    readonly property color cText: pywal.m3onSurface
+    readonly property color cSubText: pywal.m3onSurfaceMuted
     readonly property color cBorder: pywal.outlineVariant
 
     // Dynamically extracted keybinds, categories, and detected keyboard hardware
@@ -186,6 +191,14 @@ PanelWindow {
             if (mode === "list" || mode === "keyboard") {
                 root.viewMode = mode
             }
+        }
+
+        function setTheme(name: string) {
+            root.pywal.setTheme(name)
+        }
+
+        function cycleTheme() {
+            root.pywal.cycleTheme()
         }
 
         function close() {
@@ -325,7 +338,7 @@ PanelWindow {
             strokeColor: root.cBorder
             accentColor: root.cPrimary
             elevation: 6
-            highlighted: root.shouldShow
+            highlighted: false
 
             ColumnLayout {
                 anchors.fill: parent
@@ -376,6 +389,56 @@ PanelWindow {
                     }
 
                     Item { Layout.fillWidth: true }
+
+                    // Theme Picker Pill (Auto Caelestia / Standalone Presets)
+                    Rectangle {
+                        Layout.preferredHeight: 34
+                        Layout.preferredWidth: themePillRow.implicitWidth + 18
+                        radius: 10
+                        color: themePillHover.hovered ? root.cContainerHigh : root.cContainer
+                        border.width: 1
+                        border.color: themePillHover.hovered
+                            ? Qt.rgba(root.cPrimary.r, root.cPrimary.g, root.cPrimary.b, 0.50)
+                            : Qt.rgba(root.cBorder.r, root.cBorder.g, root.cBorder.b, 0.45)
+
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        HoverHandler { id: themePillHover }
+
+                        Row {
+                            id: themePillRow
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: "󰏘"
+                                font.family: "Material Design Icons"
+                                font.pixelSize: 14
+                                color: root.cPrimary
+                            }
+
+                            Text {
+                                text: root.pywal.activeThemeLabel
+                                font.family: root.config.appearance.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                color: root.cText
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: mouse => {
+                                if (mouse.button === Qt.RightButton) {
+                                    root.pywal.setTheme("auto")
+                                } else {
+                                    root.pywal.cycleTheme()
+                                }
+                            }
+                        }
+                    }
 
                     // Segmented View Mode Switcher (Seznam | Klávesnice)
                     Rectangle {
@@ -961,14 +1024,21 @@ PanelWindow {
                     searchQuery: root.query
                     liveMods: root.liveMods
                     cSurface: root.cSurface
+                    cDeck: root.cDeck
                     cContainer: root.cContainer
                     cContainerLow: root.cContainerLow
+                    cContainerHigh: root.cContainerHigh
                     cPrimary: root.cPrimary
+                    cOnPrimary: root.cOnPrimary
+                    cPrimaryContainer: root.cPrimaryContainer
+                    cOnPrimaryContainer: root.cOnPrimaryContainer
                     cText: root.cText
                     cSubText: root.cSubText
                     cBorder: root.cBorder
                     cWarning: root.pywal.warning
+                    cOnWarning: root.pywal.m3onWarning
                     cSuccess: root.pywal.success
+                    isLight: root.pywal.isLight
                     fontFamily: root.config.appearance.fontFamily
                 }
 

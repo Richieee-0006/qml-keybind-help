@@ -27,10 +27,12 @@ Singleton {
 
     readonly property var appearance: ({
         fontFamily: data.appearance?.fontFamily ?? "Inter",
-        materialIconFont: data.appearance?.materialIconFont ?? "Material Design Icons"
+        materialIconFont: data.appearance?.materialIconFont ?? "Material Design Icons",
+        theme: data.appearance?.theme ?? "auto"
     })
 
     readonly property var paths: ({
+        caelestiaScheme: _expandHome(data.paths?.caelestiaScheme ?? "~/.local/state/caelestia/scheme.json"),
         pywalColors: _expandHome(data.paths?.pywalColors ?? "~/.cache/wal/colors.json"),
         pywalBarColors: _expandHome(data.paths?.pywalBarColors ?? "~/.cache/wal/colors-bar.json"),
         pywalDockColors: _expandHome(data.paths?.pywalDockColors ?? "~/.cache/wal/colors-dock.json")
