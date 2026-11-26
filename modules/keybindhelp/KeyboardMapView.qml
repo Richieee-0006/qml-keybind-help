@@ -11,15 +11,22 @@ ColumnLayout {
     property string searchQuery: ""
     property var liveMods: []
 
-    property color cSurface: "#1c1b1a"
-    property color cContainer: "#252322"
-    property color cContainerLow: "#1f1d1c"
-    property color cPrimary: "#ce6649"
-    property color cText: "#e9e5e6"
-    property color cSubText: "#a3a0a1"
-    property color cBorder: "#595553"
-    property color cWarning: "#ff9f00"
-    property color cSuccess: "#37b679"
+    property color cSurface: "#111218"
+    property color cDeck: "#0a0b0f"
+    property color cContainer: "#191a24"
+    property color cContainerLow: "#15161e"
+    property color cContainerHigh: "#212330"
+    property color cPrimary: "#9db0e6"
+    property color cOnPrimary: "#122149"
+    property color cPrimaryContainer: "#1d3372"
+    property color cOnPrimaryContainer: "#d6def5"
+    property color cText: "#e5e5e6"
+    property color cSubText: "#c6c6c7"
+    property color cBorder: "#42444d"
+    property color cWarning: "#f3c568"
+    property color cOnWarning: "#241900"
+    property color cSuccess: "#a2ebbd"
+    property bool isLight: false
     property string fontFamily: "Inter"
 
     // Filter / view state
@@ -480,9 +487,9 @@ ColumnLayout {
         Layout.fillHeight: true
         Layout.minimumHeight: 280
         radius: 16
-        color: kbRoot.cContainerLow
+        color: kbRoot.cDeck
         border.width: 1
-        border.color: Qt.rgba(kbRoot.cBorder.r, kbRoot.cBorder.g, kbRoot.cBorder.b, 0.30)
+        border.color: Qt.rgba(kbRoot.cBorder.r, kbRoot.cBorder.g, kbRoot.cBorder.b, 0.45)
 
         readonly property real padX: 12
         readonly property real padY: 10
@@ -536,20 +543,22 @@ ColumnLayout {
                     readonly property color fillCol: {
                         if (isModActive) {
                             return kbRoot.isLiveActive
-                                ? Qt.rgba(kbRoot.cSuccess.r, kbRoot.cSuccess.g, kbRoot.cSuccess.b, 0.30)
-                                : Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, 0.30)
+                                ? Qt.rgba(kbRoot.cSuccess.r, kbRoot.cSuccess.g, kbRoot.cSuccess.b, 0.28)
+                                : kbRoot.cPrimaryContainer
                         }
                         if (kbRoot.heatmapMode && !isMod) {
-                            if (totalCount >= 3) return Qt.rgba(kbRoot.cWarning.r, kbRoot.cWarning.g, kbRoot.cWarning.b, isHovered ? 0.48 : 0.36)
-                            if (totalCount === 2) return Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, isHovered ? 0.48 : 0.36)
-                            if (totalCount === 1) return Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, isHovered ? 0.28 : 0.18)
-                            return isHovered ? Qt.rgba(kbRoot.cText.r, kbRoot.cText.g, kbRoot.cText.b, 0.08) : kbRoot.cContainer
+                            if (totalCount >= 3) return Qt.rgba(kbRoot.cWarning.r, kbRoot.cWarning.g, kbRoot.cWarning.b, isHovered ? 0.36 : 0.24)
+                            if (totalCount === 2) return isHovered ? Qt.lighter(kbRoot.cPrimaryContainer, 1.15) : kbRoot.cPrimaryContainer
+                            if (totalCount === 1) return Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, isHovered ? 0.24 : 0.14)
+                            return isHovered ? kbRoot.cContainerHigh : kbRoot.cContainer
                         }
                         if (layerCount > 0) {
-                            return Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, isHovered ? 0.34 : 0.22)
+                            return isHovered
+                                ? Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, 0.30)
+                                : kbRoot.cPrimaryContainer
                         }
                         if (isHovered) {
-                            return Qt.rgba(kbRoot.cText.r, kbRoot.cText.g, kbRoot.cText.b, 0.09)
+                            return kbRoot.cContainerHigh
                         }
                         return kbRoot.cContainer
                     }
@@ -560,16 +569,16 @@ ColumnLayout {
                         if (kbRoot.heatmapMode && totalCount >= 3) return kbRoot.cWarning
                         if (hasActiveBind) return isHovered ? kbRoot.cPrimary : Qt.rgba(kbRoot.cPrimary.r, kbRoot.cPrimary.g, kbRoot.cPrimary.b, 0.72)
                         if (isHovered) return Qt.rgba(kbRoot.cText.r, kbRoot.cText.g, kbRoot.cText.b, 0.45)
-                        return Qt.rgba(kbRoot.cBorder.r, kbRoot.cBorder.g, kbRoot.cBorder.b, 0.36)
+                        return Qt.rgba(kbRoot.cBorder.r, kbRoot.cBorder.g, kbRoot.cBorder.b, 0.45)
                     }
 
                     readonly property real keyOpacity: {
                         if (isSelected || isHovered || isModActive) return 1.0
-                        if (kbRoot.isSearching) return layerCount > 0 ? 1.0 : 0.32
-                        if (kbRoot.heatmapMode) return totalCount > 0 ? 1.0 : 0.56
+                        if (kbRoot.isSearching) return layerCount > 0 ? 1.0 : 0.34
+                        if (kbRoot.heatmapMode) return totalCount > 0 ? 1.0 : 0.62
                         if (layerCount > 0) return 1.0
-                        if (isMod) return 0.84
-                        return hasOtherBind ? 0.78 : 0.56
+                        if (isMod) return 0.88
+                        return hasOtherBind ? 0.82 : 0.64
                     }
 
                     x: Math.round(modelData.x * u)
@@ -603,7 +612,7 @@ ColumnLayout {
                             anchors.bottomMargin: 1
                             height: 2
                             radius: 1
-                            color: Qt.rgba(0, 0, 0, 0.35)
+                            color: kbRoot.isLight ? Qt.rgba(0, 0, 0, 0.12) : Qt.rgba(0, 0, 0, 0.38)
                         }
                     }
 
@@ -674,7 +683,7 @@ ColumnLayout {
                                 ? Math.max(9, Math.round(keyWrap.u * 0.21))
                                 : Math.max(10, Math.round(keyWrap.u * 0.25)))
                         font.weight: (keyWrap.hasActiveBind || keyWrap.isModActive) ? Font.Bold : Font.Medium
-                        color: (keyWrap.hasActiveBind || keyWrap.isModActive) ? kbRoot.cText : kbRoot.cSubText
+                        color: (keyWrap.hasActiveBind || keyWrap.isModActive) ? kbRoot.cOnPrimaryContainer : kbRoot.cSubText
                     }
 
                     // Top-right subtle secondary legend (CZ shift char / Fn icon) OR count badge
@@ -718,7 +727,7 @@ ColumnLayout {
                             font.family: "JetBrains Mono, monospace"
                             font.pixelSize: 9
                             font.weight: Font.Bold
-                            color: kbRoot.cSurface
+                            color: (kbRoot.heatmapMode && keyWrap.totalCount >= 3) ? kbRoot.cOnWarning : kbRoot.cOnPrimary
                         }
                     }
 

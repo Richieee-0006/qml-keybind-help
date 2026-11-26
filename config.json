@@ -1,9 +1,11 @@
 {
   "appearance": {
     "fontFamily": "Inter",
-    "materialIconFont": "Material Design Icons"
+    "materialIconFont": "Material Design Icons",
+    "theme": "auto"
   },
   "paths": {
+    "caelestiaScheme": "~/.local/state/caelestia/scheme.json",
     "pywalColors": "~/.cache/wal/colors.json",
     "pywalBarColors": "~/.cache/wal/colors-bar.json",
     "pywalDockColors": "~/.cache/wal/colors-dock.json"
