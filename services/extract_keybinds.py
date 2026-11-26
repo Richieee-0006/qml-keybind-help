@@ -572,6 +572,231 @@ def parse_hyprctl_binds() -> list[dict]:
     return results
 
 
+def _read_dmi(field: str) -> str:
+    try:
+        return Path(f"/sys/devices/virtual/dmi/id/{field}").read_text(encoding="utf-8", errors="ignore").strip()
+    except OSError:
+        return ""
+
+
+def detect_keyboard_info() -> dict:
+    """Auto-detect physical keyboard model, form-factor profile, and XKB layout."""
+    device_name = ""
+    layout = "cz"
+    active_keymap = "Czech"
+    try:
+        out = subprocess.check_output(["hyprctl", "devices", "-j"], text=True, timeout=2)
+        devices = json.loads(out)
+        keyboards = devices.get("keyboards", [])
+        ignore_tokens = (
+            "virtual", "kando", "uinput", "ydotool", "power-button", "video-bus",
+            "wireless-radio", "avrcp", "extra-buttons", "consumer", "sleep-button",
+        )
+        real_kbs = [
+            k for k in keyboards
+            if not any(tok in (k.get("name") or "").lower() for tok in ignore_tokens)
+        ]
+        pool = real_kbs or keyboards
+        chosen = next((k for k in pool if k.get("main")), None)
+        if chosen is None and pool:
+            chosen = pool[0]
+        if chosen:
+            device_name = chosen.get("name", "")
+            raw_layout = (chosen.get("layout") or "cz").split(",")[0].strip().lower()
+            if raw_layout:
+                layout = raw_layout
+            active_keymap = chosen.get("active_keymap") or active_keymap
+    except Exception:
+        pass
+
+    vendor = _read_dmi("sys_vendor")
+    prod_version = _read_dmi("product_version")
+    prod_name = _read_dmi("product_name")
+    dmi_blob = f"{vendor} {prod_version} {prod_name}".lower()
+    dev_low = device_name.lower()
+
+    iso_layouts = {
+        "cz", "sk", "de", "fr", "gb", "uk", "es", "it", "pt", "pl",
+        "hu", "se", "no", "dk", "fi", "ch", "at", "be", "nl", "hr", "si",
+    }
+    is_iso = layout in iso_layouts
+
+    profile = "tkl"
+    model_label = prod_version or prod_name or device_name or "Keyboard"
+
+    is_builtin_laptop = any(tok in dev_low for tok in ("ite-device", "at-translated-set-2", "laptop", "internal"))
+    if is_builtin_laptop and any(tok in dmi_blob for tok in ("ideapad gaming", "legion", "loq", "82sb", "ideapad")):
+        profile = "ideapad-gaming-3"
+        model_label = prod_version or "IdeaPad Gaming 3"
+    elif any(tok in dev_low for tok in ("60%", "65%", "75%", "anne", "k2", "k6", "q1", "q2", "wooting")):
+        profile = "compact-75"
+        model_label = device_name
+    elif is_builtin_laptop:
+        profile = "ideapad-gaming-3"
+    elif any(tok in dev_low for tok in ("tkl", "80%", "87")):
+        profile = "tkl"
+        model_label = device_name
+    elif device_name:
+        model_label = device_name.replace("-", " ").title()
+
+    return {
+        "model": model_label,
+        "device": device_name,
+        "profile": profile,
+        "layout": layout,
+        "keymap": active_keymap,
+        "isIso": is_iso,
+    }
+
+
+MODIFIER_ORDER = ("Super", "Ctrl", "Alt", "Shift")
+MODIFIER_SET = set(MODIFIER_ORDER)
+
+KEY_ID_MAP = {
+    "; (pod esc)": "Grave",
+    ",": "Comma",
+    ".": "Period",
+    "mouse wheel up": "MouseWheelUp",
+    "mouse wheel down": "MouseWheelDown",
+    "left drag": "MouseLeft",
+    "right drag": "MouseRight",
+    "volume up": "VolumeUp",
+    "volume down": "VolumeDown",
+    "audio mute": "AudioMute",
+    "mic mute": "MicMute",
+    "brightness up": "BrightnessUp",
+    "brightness down": "BrightnessDown",
+    "media play": "MediaPlay",
+    "media pause": "MediaPause",
+    "media stop": "MediaStop",
+    "next track": "MediaNext",
+    "previous track": "MediaPrev",
+}
+
+SHORT_LABEL_RULES = [
+    (r"Terminal \(Kitty\)", "Kitty"),
+    (r"Terminal \((\w+)\)", r"\1"),
+    (r"File Manager \(Dolphin\)", "Files"),
+    (r"File Manager", "Files"),
+    (r"Web Browser", "Web"),
+    (r"Open Obsidian", "Obsid"),
+    (r"Open Equibop", "Chat"),
+    (r"spot-launch|Application Launcher", "Launch"),
+    (r"spot-window|Visual Window Switcher", "WinSw"),
+    (r"Clipboard History", "Clip"),
+    (r"Close Focused Window", "Close"),
+    (r"Toggle Floating Mode", "Float"),
+    (r"Pin Floating Window", "Pin"),
+    (r"Toggle Pseudo-tiling", "Pseudo"),
+    (r"Toggle Tiled Fullscreen", "FullT"),
+    (r"Toggle Fullscreen", "Full"),
+    (r"Toggle Split Direction", "Split"),
+    (r"Center Floating Window", "Center"),
+    (r"Cycle Windows Backward", "PrevW"),
+    (r"Cycle Windows", "Cycle"),
+    (r"Move Focus Left", "Foc ←"),
+    (r"Move Focus Right", "Foc →"),
+    (r"Move Focus Up", "Foc ↑"),
+    (r"Move Focus Down", "Foc ↓"),
+    (r"Move Window Left", "Mov ←"),
+    (r"Move Window Right", "Mov →"),
+    (r"Move Window Up", "Mov ↑"),
+    (r"Move Window Down", "Mov ↓"),
+    (r"Swap Window Left", "Swp ←"),
+    (r"Swap Window Right", "Swp →"),
+    (r"Swap Window Up", "Swp ↑"),
+    (r"Swap Window Down", "Swp ↓"),
+    (r"Switch to Workspace 1–5", "WS 1-5"),
+    (r"Move Window to Workspace 1–5 Silently", "Sil WS"),
+    (r"Move Window to Workspace 1–5", "→WS1-5"),
+    (r"Next Workspace", "NextWS"),
+    (r"Previous Workspace", "PrevWS"),
+    (r"Toggle Magic Scratchpad", "Magic"),
+    (r"Send Window to Magic Scratchpad", "→Magic"),
+    (r"Toggle Terminal Scratchpad", "Term"),
+    (r"Send Window to Terminal Scratchpad", "→Term"),
+    (r"Lock Screen", "Lock"),
+    (r"Reload Hyprland", "Reload"),
+    (r"Exit Hyprland", "Exit"),
+    (r"Enter Interactive Resize Mode", "Resize"),
+    (r"Exit Resize Mode", "Done"),
+    (r"Resize Window Wider", "+W"),
+    (r"Resize Window Narrower", "-W"),
+    (r"Resize Window Shorter", "-H"),
+    (r"Resize Window Taller", "+H"),
+    (r"Wallpaper Picker", "Walls"),
+    (r"Hyprland Session Settings", "Prefs"),
+    (r"YouTube Music", "Music"),
+    (r"Toggle Window Group", "Group"),
+    (r"Move Window Out of Group", "Ungrp"),
+    (r"Next Tab in Active Group", "Tab →"),
+    (r"Previous Tab in Active Group", "Tab ←"),
+    (r"Interactive Region Screenshot", "Region"),
+    (r"Capture Fullscreen Screenshot", "Full"),
+    (r"Capture Active Window Screenshot", "Win"),
+    (r"Satty Editor", "Satty"),
+    (r"Keybind Reference", "Help"),
+    (r"BongoCat", "Bongo"),
+    (r"Notification Center", "Notif"),
+    (r"Toggle Caps Lock", "Caps"),
+    (r"Lock floating|Lock window", "Pin"),
+    (r"Output Volume \+5%", "Vol +"),
+    (r"Output Volume -5%", "Vol -"),
+    (r"Audio Mute", "Mute"),
+    (r"Microphone Mute", "Mic"),
+    (r"Brightness \+5%", "Bri +"),
+    (r"Brightness -5%", "Bri -"),
+    (r"Media Play / Pause", "Play"),
+    (r"Stop Media", "Stop"),
+    (r"Next Media Track", "Next"),
+    (r"Previous Media Track", "Prev"),
+    (r"Move Window", "Drag"),
+    (r"Resize Window", "Resize"),
+]
+
+
+def make_short_label(action: str) -> str:
+    """Create a concise keycap label derived from a full action description."""
+    for pat, repl in SHORT_LABEL_RULES:
+        if re.search(pat, action, re.I):
+            return re.sub(pat, repl, action, count=1, flags=re.I) if "\\" in repl else repl
+    cleaned = re.sub(r"\([^)]*\)", "", action).strip()
+    cleaned = re.sub(r"^(Open|Toggle|Switch to|Capture|Adjust|Run)\s+", "", cleaned, flags=re.I)
+    words = cleaned.split()
+    out = " ".join(words[:2]) if words else action
+    return out[:11]
+
+
+def parse_key_components(formatted_key: str, cat: str) -> tuple[list[str], list[str], str]:
+    """Return canonical (mods, physical_key_ids, submap) for a formatted key string."""
+    parts = [p.strip() for p in formatted_key.split(" + ") if p.strip()]
+    mods_found: set[str] = set()
+    triggers: list[str] = []
+    for p in parts:
+        if p in MODIFIER_SET:
+            mods_found.add(p)
+        else:
+            triggers.append(p)
+
+    mods = [m for m in MODIFIER_ORDER if m in mods_found]
+    keys: list[str] = []
+    for tok in triggers:
+        low = tok.lower()
+        if low in KEY_ID_MAP:
+            keys.append(KEY_ID_MAP[low])
+        elif re.match(r"^(\d)[–-](\d)$", tok):
+            start_d, end_d = int(tok[0]), int(tok[2])
+            for d in range(start_d, end_d + 1):
+                keys.append(str(d))
+        elif len(tok) == 1:
+            keys.append(tok.upper())
+        else:
+            keys.append(tok)
+
+    submap = "resize" if cat == "Resize Mode" else ""
+    return mods, keys, submap
+
+
 def deduplicate_binds(binds: list[dict]) -> list[dict]:
     """Merge duplicate (cat, key) bindings, preferring primary over auxiliary actions."""
     seen: dict[tuple[str, str], dict] = {}
@@ -585,7 +810,20 @@ def deduplicate_binds(binds: list[dict]) -> list[dict]:
             seen[k] = item
         elif not item["aux"] and item["action"] != seen[k]["action"]:
             seen[k] = {**seen[k], "action": f"{seen[k]['action']} / {item['action']}"}
-    return [{"cat": seen[k]["cat"], "key": seen[k]["key"], "action": seen[k]["action"]} for k in order]
+    enriched = []
+    for k in order:
+        entry = seen[k]
+        mods, keys, submap = parse_key_components(entry["key"], entry["cat"])
+        enriched.append({
+            "cat": entry["cat"],
+            "key": entry["key"],
+            "action": entry["action"],
+            "shortLabel": make_short_label(entry["action"]),
+            "mods": mods,
+            "keys": keys,
+            "submap": submap,
+        })
+    return enriched
 
 
 def extract_all(hypr_dir: Path) -> dict:
@@ -606,7 +844,11 @@ def extract_all(hypr_dir: Path) -> dict:
 
     present_cats = {b["cat"] for b in clean_binds}
     categories = [{"name": name, "icon": icon} for name, icon in CATEGORY_META if name in present_cats]
-    return {"categories": categories, "binds": clean_binds}
+    return {
+        "keyboard": detect_keyboard_info(),
+        "categories": categories,
+        "binds": clean_binds,
+    }
 
 
 if __name__ == "__main__":

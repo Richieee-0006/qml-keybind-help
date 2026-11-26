@@ -15,6 +15,46 @@ PanelWindow {
     property bool shouldShow: false
     property string selectedCategory: "Applications"
     property string query: ""
+    property string viewMode: "list" // "list" | "keyboard"
+
+    // Live physically held modifiers (updated via Keys.onPressed / onReleased)
+    property bool liveSuper: false
+    property bool liveCtrl: false
+    property bool liveAlt: false
+    property bool liveShift: false
+    readonly property var liveMods: {
+        const mods = []
+        if (liveSuper) mods.push("Super")
+        if (liveCtrl) mods.push("Ctrl")
+        if (liveAlt) mods.push("Alt")
+        if (liveShift) mods.push("Shift")
+        return mods
+    }
+
+    function updateLiveModifiers(event, pressed) {
+        if (event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R || event.key === Qt.Key_Meta) {
+            liveSuper = pressed
+        } else if (event.key === Qt.Key_Control) {
+            liveCtrl = pressed
+        } else if (event.key === Qt.Key_Alt || event.key === Qt.Key_AltGr) {
+            liveAlt = pressed
+        } else if (event.key === Qt.Key_Shift) {
+            liveShift = pressed
+        }
+        if (pressed) {
+            if (event.modifiers & Qt.MetaModifier) liveSuper = true
+            if (event.modifiers & Qt.ControlModifier) liveCtrl = true
+            if (event.modifiers & Qt.AltModifier) liveAlt = true
+            if (event.modifiers & Qt.ShiftModifier) liveShift = true
+        }
+    }
+
+    function resetLiveModifiers() {
+        liveSuper = false
+        liveCtrl = false
+        liveAlt = false
+        liveShift = false
+    }
 
     readonly property var config: QsConfig.Config
     readonly property var pywal: QsServices.Pywal
@@ -26,9 +66,10 @@ PanelWindow {
     readonly property color cSubText: pywal.onSurfaceMuted
     readonly property color cBorder: pywal.outlineVariant
 
-    // Dynamically extracted keybinds and categories
+    // Dynamically extracted keybinds, categories, and detected keyboard hardware
     property var allBinds: []
     property var categoryList: []
+    property var keyboardInfo: ({})
 
     readonly property string extractorPath: Qt.resolvedUrl("../../services/extract_keybinds.py").toString().replace(/^file:\/\//, "")
 
@@ -41,6 +82,9 @@ PanelWindow {
                 if (!text || text.trim().length === 0) return
                 try {
                     const parsed = JSON.parse(text)
+                    if (parsed.keyboard && typeof parsed.keyboard === "object") {
+                        root.keyboardInfo = parsed.keyboard
+                    }
                     if (Array.isArray(parsed.binds)) {
                         root.allBinds = parsed.binds
                     }
@@ -106,13 +150,14 @@ PanelWindow {
     }
 
     onShouldShowChanged: {
+        resetLiveModifiers()
         if (shouldShow) {
             refreshKeybinds()
             query = ""
             if (bindFlickable) bindFlickable.contentY = 0
             Qt.callLater(() => {
                 mainPanel.forceActiveFocus()
-                searchInput.forceActiveFocus()
+                if (viewMode === "list") searchInput.forceActiveFocus()
             })
         }
     }
@@ -126,6 +171,21 @@ PanelWindow {
 
         function open() {
             root.shouldShow = true
+        }
+
+        function toggleKeyboard() {
+            if (root.shouldShow && root.viewMode === "keyboard") {
+                root.shouldShow = false
+            } else {
+                root.viewMode = "keyboard"
+                root.shouldShow = true
+            }
+        }
+
+        function setView(mode: string) {
+            if (mode === "list" || mode === "keyboard") {
+                root.viewMode = mode
+            }
         }
 
         function close() {
@@ -178,9 +238,20 @@ PanelWindow {
     FocusScope {
         id: mainPanel
         anchors.centerIn: parent
-        width: Math.min(940, parent.width - 60)
-        height: Math.min(640, parent.height - 60)
+        width: root.viewMode === "keyboard"
+            ? Math.min(1260, parent.width - 48)
+            : Math.min(940, parent.width - 60)
+        height: root.viewMode === "keyboard"
+            ? Math.min(720, parent.height - 48)
+            : Math.min(640, parent.height - 60)
         focus: root.shouldShow
+
+        Behavior on width {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
 
         property real revealY: root.shouldShow ? 0 : 20
         property real panelOpacity: root.shouldShow ? 1.0 : 0.0
@@ -212,26 +283,33 @@ PanelWindow {
             }
         }
 
-        // Keyboard navigation on mainPanel
-        Keys.onEscapePressed: event => {
-            root.shouldShow = false
-            event.accepted = true
+        // Keyboard navigation + live modifier tracking on mainPanel
+        Keys.onPressed: event => {
+            root.updateLiveModifiers(event, true)
+            if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Tab) {
+                root.viewMode = (root.viewMode === "list") ? "keyboard" : "list"
+                event.accepted = true
+                return
+            }
+            if (event.key === Qt.Key_Escape) {
+                if (root.viewMode === "keyboard" && keyboardMap.selectedKeyId.length > 0) {
+                    keyboardMap.selectedKeyId = ""
+                } else {
+                    root.shouldShow = false
+                }
+                event.accepted = true
+            } else if (root.viewMode === "list") {
+                if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
+                    root.nextCategory()
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) {
+                    root.prevCategory()
+                    event.accepted = true
+                }
+            }
         }
-        Keys.onDownPressed: event => {
-            root.nextCategory()
-            event.accepted = true
-        }
-        Keys.onUpPressed: event => {
-            root.prevCategory()
-            event.accepted = true
-        }
-        Keys.onTabPressed: event => {
-            root.nextCategory()
-            event.accepted = true
-        }
-        Keys.onBacktabPressed: event => {
-            root.prevCategory()
-            event.accepted = true
+        Keys.onReleased: event => {
+            root.updateLiveModifiers(event, false)
         }
 
         // Eat backdrop clicks inside the card
@@ -288,7 +366,9 @@ PanelWindow {
                         }
 
                         Text {
-                            text: "Use ↑↓ arrows or click a category to view shortcuts • Esc to close"
+                            text: root.viewMode === "keyboard"
+                                ? "Vizuální mapa reálných zkratek • Podrž modifikátor nebo klikni na klávesu"
+                                : "Use ↑↓ arrows or click a category to view shortcuts • Esc to close"
                             font.family: root.config.appearance.fontFamily
                             font.pixelSize: 11
                             color: root.cSubText
@@ -296,6 +376,84 @@ PanelWindow {
                     }
 
                     Item { Layout.fillWidth: true }
+
+                    // Segmented View Mode Switcher (Seznam | Klávesnice)
+                    Rectangle {
+                        Layout.preferredHeight: 34
+                        Layout.preferredWidth: viewSwitchRow.implicitWidth + 8
+                        radius: 10
+                        color: root.cContainer
+                        border.width: 1
+                        border.color: Qt.rgba(root.cBorder.r, root.cBorder.g, root.cBorder.b, 0.35)
+
+                        Row {
+                            id: viewSwitchRow
+                            anchors.centerIn: parent
+                            spacing: 4
+
+                            Repeater {
+                                model: [
+                                    { id: "list", label: "Seznam", icon: "󰕰" },
+                                    { id: "keyboard", label: "Klávesnice", icon: "󰌌" }
+                                ]
+
+                                Rectangle {
+                                    id: viewTab
+                                    required property var modelData
+                                    readonly property bool active: root.viewMode === modelData.id
+
+                                    height: 26
+                                    width: tabContent.implicitWidth + 18
+                                    radius: 7
+                                    color: active
+                                        ? Qt.rgba(root.cPrimary.r, root.cPrimary.g, root.cPrimary.b, 0.22)
+                                        : tabHover.hovered
+                                            ? Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.06)
+                                            : "transparent"
+                                    border.width: active ? 1 : 0
+                                    border.color: Qt.rgba(root.cPrimary.r, root.cPrimary.g, root.cPrimary.b, 0.45)
+
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                                    HoverHandler { id: tabHover }
+
+                                    Row {
+                                        id: tabContent
+                                        anchors.centerIn: parent
+                                        spacing: 6
+
+                                        Text {
+                                            text: viewTab.modelData.icon
+                                            font.family: "Material Design Icons"
+                                            font.pixelSize: 14
+                                            color: viewTab.active ? root.cPrimary : root.cSubText
+                                        }
+
+                                        Text {
+                                            text: viewTab.modelData.label
+                                            font.family: root.config.appearance.fontFamily
+                                            font.pixelSize: 12
+                                            font.weight: viewTab.active ? Font.DemiBold : Font.Normal
+                                            color: viewTab.active ? root.cText : root.cSubText
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.viewMode = viewTab.modelData.id
+                                            if (root.viewMode === "keyboard") {
+                                                mainPanel.forceActiveFocus()
+                                            } else {
+                                                searchInput.forceActiveFocus()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Close Button
                     Rectangle {
@@ -368,21 +526,40 @@ PanelWindow {
                                 if (bindFlickable) bindFlickable.contentY = 0
                             }
 
+                            Keys.onPressed: event => {
+                                root.updateLiveModifiers(event, true)
+                                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Tab) {
+                                    root.viewMode = (root.viewMode === "list") ? "keyboard" : "list"
+                                    if (root.viewMode === "keyboard") mainPanel.forceActiveFocus()
+                                    event.accepted = true
+                                }
+                            }
+                            Keys.onReleased: event => {
+                                root.updateLiveModifiers(event, false)
+                            }
                             Keys.onDownPressed: event => {
-                                root.nextCategory()
-                                event.accepted = true
+                                if (root.viewMode === "list") {
+                                    root.nextCategory()
+                                    event.accepted = true
+                                }
                             }
                             Keys.onUpPressed: event => {
-                                root.prevCategory()
-                                event.accepted = true
+                                if (root.viewMode === "list") {
+                                    root.prevCategory()
+                                    event.accepted = true
+                                }
                             }
                             Keys.onTabPressed: event => {
-                                root.nextCategory()
-                                event.accepted = true
+                                if (root.viewMode === "list") {
+                                    root.nextCategory()
+                                    event.accepted = true
+                                }
                             }
                             Keys.onBacktabPressed: event => {
-                                root.prevCategory()
-                                event.accepted = true
+                                if (root.viewMode === "list") {
+                                    root.prevCategory()
+                                    event.accepted = true
+                                }
                             }
                             Keys.onEscapePressed: event => {
                                 if (text.length > 0) {
@@ -433,7 +610,9 @@ PanelWindow {
                                 anchors.centerIn: parent
                                 text: root.query.length > 0
                                     ? (root.currentBinds.length + " found")
-                                    : (root.currentBinds.length + " shortcuts")
+                                    : (root.viewMode === "keyboard"
+                                        ? (keyboardMap.layerStats.bound + " active · " + root.allBinds.length + " total")
+                                        : (root.currentBinds.length + " shortcuts"))
                                 font.family: root.config.appearance.fontFamily
                                 font.pixelSize: 11
                                 font.weight: Font.Medium
@@ -443,8 +622,9 @@ PanelWindow {
                     }
                 }
 
-                // Main Body: Categories Sidebar + Keybinds List
+                // Main Body: List View (Categories + Keybinds)
                 RowLayout {
+                    visible: root.viewMode === "list"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     spacing: 14
@@ -770,6 +950,28 @@ PanelWindow {
                     }
                 }
 
+                // Visual Keyboard View
+                KeyboardMapView {
+                    id: keyboardMap
+                    visible: root.viewMode === "keyboard"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    allBinds: root.allBinds
+                    keyboardInfo: root.keyboardInfo
+                    searchQuery: root.query
+                    liveMods: root.liveMods
+                    cSurface: root.cSurface
+                    cContainer: root.cContainer
+                    cContainerLow: root.cContainerLow
+                    cPrimary: root.cPrimary
+                    cText: root.cText
+                    cSubText: root.cSubText
+                    cBorder: root.cBorder
+                    cWarning: root.pywal.warning
+                    cSuccess: root.pywal.success
+                    fontFamily: root.config.appearance.fontFamily
+                }
+
                 // Bottom Footer Hints
                 RowLayout {
                     Layout.fillWidth: true
@@ -781,6 +983,17 @@ PanelWindow {
                     RowLayout {
                         spacing: 4
                         Rectangle {
+                            width: 48; height: 18; radius: 4
+                            color: Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.10)
+                            Text { anchors.centerIn: parent; text: "Ctrl+Tab"; font.pixelSize: 9; color: root.cSubText }
+                        }
+                        Text { text: root.viewMode === "keyboard" ? "Seznam" : "Klávesnice"; font.family: root.config.appearance.fontFamily; font.pixelSize: 11; color: root.cSubText }
+                    }
+
+                    RowLayout {
+                        visible: root.viewMode === "list"
+                        spacing: 4
+                        Rectangle {
                             width: 26; height: 18; radius: 4
                             color: Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.10)
                             Text { anchors.centerIn: parent; text: "↑↓"; font.pixelSize: 10; color: root.cSubText }
@@ -789,6 +1002,7 @@ PanelWindow {
                     }
 
                     RowLayout {
+                        visible: root.viewMode === "list"
                         spacing: 4
                         Rectangle {
                             width: 28; height: 18; radius: 4
@@ -796,6 +1010,17 @@ PanelWindow {
                             Text { anchors.centerIn: parent; text: "Tab"; font.pixelSize: 9; color: root.cSubText }
                         }
                         Text { text: "Next Category"; font.family: root.config.appearance.fontFamily; font.pixelSize: 11; color: root.cSubText }
+                    }
+
+                    RowLayout {
+                        visible: root.viewMode === "keyboard"
+                        spacing: 4
+                        Rectangle {
+                            width: 44; height: 18; radius: 4
+                            color: Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.10)
+                            Text { anchors.centerIn: parent; text: "Klik"; font.pixelSize: 9; color: root.cSubText }
+                        }
+                        Text { text: "Připnout klávesu / modifikátor"; font.family: root.config.appearance.fontFamily; font.pixelSize: 11; color: root.cSubText }
                     }
 
                     RowLayout {
